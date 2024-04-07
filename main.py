@@ -4,15 +4,21 @@ from os import PathLike
 from time import time
 import asyncio
 from typing import Union
-
+from llama_index.core import StorageContext, load_index_from_storage
+from chroma import query_from_disk
 from dotenv import load_dotenv
 import openai
 from deepgram import Deepgram
 import pygame
 from pygame import mixer
 import elevenlabs
-
+from elevenlabs import Voice, VoiceSettings
 from record import speech_to_text
+import speech_recognition as sr
+from transformers import pipeline
+import scipy
+from transformers import AutoProcessor, BarkModel
+
 
 # Load API keys
 load_dotenv()
@@ -27,9 +33,17 @@ deepgram = Deepgram(DEEPGRAM_API_KEY)
 mixer.init()
 
 # Change the context if you want to change Jarvis' personality
-context = "You are Jarvis, Alex's human assistant. You are witty and full of personality. Your answers should be limited to 1-2 short sentences."
+context = "You are Jarvis, Rayan's human assistant. You are a chatbot that answer AI related questions"
 conversation = {"Conversation": []}
 RECORDING_PATH = "audio/recording.wav"
+
+
+def rag_retreival():
+    # rebuild storage context
+    storage_context = StorageContext.from_defaults(persist_dir="/Users/rayanbessadi/Documents/Code/jarvis/JARVIS/ChromeStore")
+
+    # load index
+    index = load_index_from_storage(storage_context)
 
 
 def request_gpt(prompt: str) -> str:
@@ -54,6 +68,21 @@ def request_gpt(prompt: str) -> str:
     )
     return response.choices[0].message.content
 
+def text_to_speech():
+    processor = AutoProcessor.from_pretrained("suno/bark")
+    model = BarkModel.from_pretrained("suno/bark")
+
+    voice_preset = "v2/en_speaker_6"
+
+    inputs = processor("Hello, my dog is cute", voice_preset=voice_preset)
+
+    audio_array = model.generate(**inputs)
+    audio_array = audio_array.cpu().numpy().squeeze()
+
+    print("audio array generated")
+    sample_rate = model.generation_config.sample_rate
+    scipy.io.wavfile.write("bark_out.wav", rate=sample_rate, data=audio_array)
+    print('file saved')
 
 async def transcribe(
     file_name: Union[Union[str, bytes, PathLike[str], PathLike[bytes]], int]
@@ -83,7 +112,28 @@ def log(log: str):
 
 
 if __name__ == "__main__":
-    while True:
+    string_words = ''
+    
+    while "hey jarvis" not in string_words.lower():
+
+    # Record audio
+        log("Listening...")
+        speech_to_text(max_seconds=5)
+        log("Done listening")
+
+        # Transcribe audio
+        current_time = time()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        words = loop.run_until_complete(transcribe(RECORDING_PATH))
+        string_words = " ".join(
+            word_dict.get("word") for word_dict in words if "word" in word_dict
+        )
+
+    sound = mixer.Sound("audio/welcome_message.wav")
+    sound.play()
+    
+    while "jarvis turn off" not in string_words.lower():
         # Record audio
         log("Listening...")
         speech_to_text()
@@ -97,6 +147,9 @@ if __name__ == "__main__":
         string_words = " ".join(
             word_dict.get("word") for word_dict in words if "word" in word_dict
         )
+        if "jarvis turn off" in string_words.lower():
+            continue
+        
         with open("conv.txt", "a") as f:
             f.write(f"{string_words}\n")
         transcription_time = time() - current_time
@@ -104,16 +157,21 @@ if __name__ == "__main__":
 
         # Get response from GPT-3
         current_time = time()
-        context += f"\nAlex: {string_words}\nJarvis: "
-        response = request_gpt(context)
-        context += response
+        context += f"\Rayan: {string_words}\nJarvis: "
+        # response = request_gpt(context)
+        response2 = query_from_disk(string_words)
+        print(response2)
+        # context += response
         gpt_time = time() - current_time
         log(f"Finished generating response in {gpt_time:.2f} seconds.")
 
         # Convert response to audio
         current_time = time()
         audio = elevenlabs.generate(
-            text=response, voice="Adam", model="eleven_monolingual_v1"
+            text=str(response2), voice=Voice(
+        voice_id='UrE8mK37ssJ5yYNuQGZM',
+        settings=VoiceSettings(stability=0.71, similarity_boost=0.9, style=0.0, use_speaker_boost=True)
+    ), model="eleven_monolingual_v1"
         )
         elevenlabs.save(audio, "audio/response.wav")
         audio_time = time() - current_time
@@ -124,7 +182,7 @@ if __name__ == "__main__":
         sound = mixer.Sound("audio/response.wav")
         # Add response as a new line to conv.txt
         with open("conv.txt", "a") as f:
-            f.write(f"{response}\n")
+            f.write(f"{response2}\n")
         sound.play()
         pygame.time.wait(int(sound.get_length() * 1000))
-        print(f"\n --- USER: {string_words}\n --- JARVIS: {response}\n")
+        print(f"\n --- USER: {string_words}\n --- JARVIS: {response2}\n")

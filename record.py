@@ -11,14 +11,16 @@ import pyaudio
 pa = pyaudio.PyAudio()
 
 
-def speech_to_text() -> None:
+
+def speech_to_text(max_seconds = None) -> None:
     """
     Records audio until silence is detected
     Saves audio to audio/recording.wav
     """
     recorder = WebRtcVadRecorder(
         vad_mode=3,
-        silence_seconds=4,
+        silence_seconds=6,
+        max_seconds=max_seconds
     )
     recorder.start()
     # file directory
@@ -92,4 +94,4 @@ def speech_to_text() -> None:
 
 
 if __name__ == "__main__":
-    SpeechToText()
+    speech_to_text()
