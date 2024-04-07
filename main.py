@@ -1,49 +1,39 @@
 """Main file for the Jarvis project"""
 import os
-from os import PathLike
 from time import time
 import asyncio
-from typing import Union
-from llama_index.core import StorageContext, load_index_from_storage
-from chroma import query_from_disk
+from RAG import query_from_disk
 from dotenv import load_dotenv
 import openai
-from deepgram import Deepgram
 import pygame
 from pygame import mixer
 import elevenlabs
 from elevenlabs import Voice, VoiceSettings
-from record import speech_to_text
 import speech_recognition as sr
 from transformers import pipeline
-import scipy
-from transformers import AutoProcessor, BarkModel
+from audio import Audio
 
 
 # Load API keys
 load_dotenv()
+
+# Instantiate the Audio class
+au = Audio(deepgram_key= os.getenv("DEEPGRAM_API_KEY"))
+
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
 elevenlabs.set_api_key(os.getenv("ELEVENLABS_API_KEY"))
 
 # Initialize APIs
 gpt_client = openai.Client(api_key=OPENAI_API_KEY)
-deepgram = Deepgram(DEEPGRAM_API_KEY)
 # mixer is a pygame module for playing audio
 mixer.init()
 
 # Change the context if you want to change Jarvis' personality
 context = "You are Jarvis, Rayan's human assistant. You are a chatbot that answer AI related questions"
 conversation = {"Conversation": []}
-RECORDING_PATH = "audio/recording.wav"
+RECORDING_PATH = "audio/audio_files/recording.wav"
 
-
-def rag_retreival():
-    # rebuild storage context
-    storage_context = StorageContext.from_defaults(persist_dir="/Users/rayanbessadi/Documents/Code/jarvis/JARVIS/ChromeStore")
-
-    # load index
-    index = load_index_from_storage(storage_context)
 
 
 def request_gpt(prompt: str) -> str:
@@ -68,39 +58,6 @@ def request_gpt(prompt: str) -> str:
     )
     return response.choices[0].message.content
 
-def text_to_speech():
-    processor = AutoProcessor.from_pretrained("suno/bark")
-    model = BarkModel.from_pretrained("suno/bark")
-
-    voice_preset = "v2/en_speaker_6"
-
-    inputs = processor("Hello, my dog is cute", voice_preset=voice_preset)
-
-    audio_array = model.generate(**inputs)
-    audio_array = audio_array.cpu().numpy().squeeze()
-
-    print("audio array generated")
-    sample_rate = model.generation_config.sample_rate
-    scipy.io.wavfile.write("bark_out.wav", rate=sample_rate, data=audio_array)
-    print('file saved')
-
-async def transcribe(
-    file_name: Union[Union[str, bytes, PathLike[str], PathLike[bytes]], int]
-):
-    """
-    Transcribe audio using Deepgram API.
-
-    Args:
-        - file_name: The name of the file to transcribe.
-
-    Returns:
-        The response from the API.
-    """
-    with open(file_name, "rb") as audio:
-        source = {"buffer": audio, "mimetype": "audio/wav"}
-        response = await deepgram.transcription.prerecorded(source)
-        return response["results"]["channels"][0]["alternatives"][0]["words"]
-
 
 def log(log: str):
     """
@@ -118,35 +75,23 @@ if __name__ == "__main__":
 
     # Record audio
         log("Listening...")
-        speech_to_text(max_seconds=5)
+        string_words = au.speech_to_text(max_seconds=5, recording_path=RECORDING_PATH)
         log("Done listening")
 
-        # Transcribe audio
+        
         current_time = time()
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        words = loop.run_until_complete(transcribe(RECORDING_PATH))
-        string_words = " ".join(
-            word_dict.get("word") for word_dict in words if "word" in word_dict
-        )
 
-    sound = mixer.Sound("audio/welcome_message.wav")
+    sound = mixer.Sound("audio/audio_files/welcome_message.wav")
     sound.play()
     
     while "jarvis turn off" not in string_words.lower():
         # Record audio
         log("Listening...")
-        speech_to_text()
+        string_words = au.speech_to_text(recording_path=RECORDING_PATH)
         log("Done listening")
 
         # Transcribe audio
-        current_time = time()
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        words = loop.run_until_complete(transcribe(RECORDING_PATH))
-        string_words = " ".join(
-            word_dict.get("word") for word_dict in words if "word" in word_dict
-        )
+        
         if "jarvis turn off" in string_words.lower():
             continue
         
@@ -155,7 +100,7 @@ if __name__ == "__main__":
         transcription_time = time() - current_time
         log(f"Finished transcribing in {transcription_time:.2f} seconds.")
 
-        # Get response from GPT-3
+        # Get response from query
         current_time = time()
         context += f"\Rayan: {string_words}\nJarvis: "
         # response = request_gpt(context)
@@ -165,21 +110,21 @@ if __name__ == "__main__":
         gpt_time = time() - current_time
         log(f"Finished generating response in {gpt_time:.2f} seconds.")
 
-        # Convert response to audio
-        current_time = time()
-        audio = elevenlabs.generate(
-            text=str(response2), voice=Voice(
-        voice_id='UrE8mK37ssJ5yYNuQGZM',
-        settings=VoiceSettings(stability=0.71, similarity_boost=0.9, style=0.0, use_speaker_boost=True)
-    ), model="eleven_monolingual_v1"
-        )
-        elevenlabs.save(audio, "audio/response.wav")
-        audio_time = time() - current_time
-        log(f"Finished generating audio in {audio_time:.2f} seconds.")
+    #     # Convert response to audio
+    #     current_time = time()
+    #     audio = elevenlabs.generate(
+    #         text=str(response2), voice=Voice(
+    #     voice_id='UrE8mK37ssJ5yYNuQGZM',
+    #     settings=VoiceSettings(stability=0.71, similarity_boost=0.9, style=0.0, use_speaker_boost=True)
+    # ), model="eleven_monolingual_v1"
+    #     )
+    #     elevenlabs.save(audio, "audio/audio_files/response.wav")
+    #     audio_time = time() - current_time
+    #     log(f"Finished generating audio in {audio_time:.2f} seconds.")
 
         # Play response
         log("Speaking...")
-        sound = mixer.Sound("audio/response.wav")
+        sound = mixer.Sound("audio/audio_files/response.wav")
         # Add response as a new line to conv.txt
         with open("conv.txt", "a") as f:
             f.write(f"{response2}\n")
