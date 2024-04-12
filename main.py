@@ -12,6 +12,7 @@ from elevenlabs import Voice, VoiceSettings
 import speech_recognition as sr
 from transformers import pipeline
 from audio import Audio
+from image_rec import VLM
 
 
 # Load API keys
@@ -19,44 +20,14 @@ load_dotenv()
 
 # Instantiate the Audio class
 au = Audio(deepgram_key= os.getenv("DEEPGRAM_API_KEY"))
-
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+vlmd = VLM()
+RECORDING_PATH = "audio/audio_files/recording.wav"
 elevenlabs.set_api_key(os.getenv("ELEVENLABS_API_KEY"))
 
-# Initialize APIs
-gpt_client = openai.Client(api_key=OPENAI_API_KEY)
+
 # mixer is a pygame module for playing audio
 mixer.init()
 
-# Change the context if you want to change Jarvis' personality
-context = "You are Jarvis, Rayan's human assistant. You are a chatbot that answer AI related questions"
-conversation = {"Conversation": []}
-RECORDING_PATH = "audio/audio_files/recording.wav"
-
-
-
-def request_gpt(prompt: str) -> str:
-    """
-    Send a prompt to the GPT-3 API and return the response.
-
-    Args:
-        - state: The current state of the app.
-        - prompt: The prompt to send to the API.
-
-    Returns:
-        The response from the API.
-    """
-    response = gpt_client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": f"{prompt}",
-            }
-        ],
-        model="gpt-3.5-turbo",
-    )
-    return response.choices[0].message.content
 
 
 def log(log: str):
@@ -102,13 +73,11 @@ if __name__ == "__main__":
 
         # Get response from query
         current_time = time()
-        context += f"\Rayan: {string_words}\nJarvis: "
-        # response = request_gpt(context)
         response2 = query_from_disk(string_words)
         print(response2)
         # context += response
-        gpt_time = time() - current_time
-        log(f"Finished generating response in {gpt_time:.2f} seconds.")
+    #     gpt_time = time() - current_time
+    #     log(f"Finished generating response in {gpt_time:.2f} seconds.")
 
     #     # Convert response to audio
     #     current_time = time()
@@ -122,12 +91,12 @@ if __name__ == "__main__":
     #     audio_time = time() - current_time
     #     log(f"Finished generating audio in {audio_time:.2f} seconds.")
 
-        # Play response
-        log("Speaking...")
-        sound = mixer.Sound("audio/audio_files/response.wav")
-        # Add response as a new line to conv.txt
-        with open("conv.txt", "a") as f:
-            f.write(f"{response2}\n")
-        sound.play()
-        pygame.time.wait(int(sound.get_length() * 1000))
-        print(f"\n --- USER: {string_words}\n --- JARVIS: {response2}\n")
+    #     # Play response
+    #     log("Speaking...")
+    #     sound = mixer.Sound("audio/audio_files/response.wav")
+    #     # Add response as a new line to conv.txt
+    #     with open("conv.txt", "a") as f:
+    #         f.write(f"{response2}\n")
+    #     sound.play()
+    #     pygame.time.wait(int(sound.get_length() * 1000))
+    #     print(f"\n --- USER: {string_words}\n --- JARVIS: {response2}\n")

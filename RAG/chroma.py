@@ -2,18 +2,15 @@ import chromadb
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 from llama_index.core import StorageContext
 from llama_index.vector_stores.chroma import ChromaVectorStore
-import openai
-from llama_index.llms.openai import OpenAI
 import os
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.core import Settings
-from llama_index.llms.huggingface import (
-    HuggingFaceInferenceAPI,
-    HuggingFaceLLM,
-)
-from llama_index.core import StorageContext, load_index_from_storage
-import requests
+from llama_index.core import StorageContext
+from llama_index.llms.ollama import Ollama
+from llama_index.core import VectorStoreIndex, get_response_synthesizer
+from llama_index.core.retrievers import VectorIndexRetriever
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.postprocessor import SimilarityPostprocessor
 
 os.environ["OPENAI_API_KEY"] = "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"
 HF_TOKEN = "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"
@@ -21,9 +18,10 @@ HF_TOKEN = "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"
 Settings.embed_model = HuggingFaceEmbedding(
     model_name="BAAI/bge-small-en-v1.5"
 )
-Settings.llm = HuggingFaceInferenceAPI(
-    model_name="HuggingFaceH4/zephyr-7b-alpha", token=HF_TOKEN
-)
+# Settings.llm = HuggingFaceInferenceAPI(
+#     model_name="CohereForAI/c4ai-command-r-plus", token=HF_TOKEN
+# )
+Settings.llm = Ollama(model="dolphin-phi", request_timeout=60.0)
 
 
 def load_new_data():
@@ -50,7 +48,6 @@ def load_new_data():
         storage_context=storage_context,
         show_progress=True
     )
-    
     return "Data loading successfully!"
 
 def query_from_disk(query):
@@ -61,9 +58,26 @@ def query_from_disk(query):
     index = VectorStoreIndex.from_vector_store(
         vector_store
     )
+    print("configure retriver")
+    retriever = VectorIndexRetriever(
+        index=index,
+        similarity_top_k=10,
+    )
+
+    # configure response synthesizer
+    response_synthesizer = get_response_synthesizer()
+
+    # assemble query engine
+    query_engine = RetrieverQueryEngine(
+        retriever=retriever,
+        response_synthesizer=response_synthesizer,
+        node_postprocessors=[SimilarityPostprocessor(similarity_cutoff=0.7)],
+    )
+
     # #  # create a query engine and query
     print('querying')
-    query_engine = index.as_query_engine(llm=Settings.llm)
+    query_engine = index.as_query_engine(llm=Settings.llm, )
+    print('querying')
     response = query_engine.query(query)
     
     return response
@@ -72,5 +86,5 @@ def query_from_disk(query):
 if __name__ == "__main__":
     # outcome = load_new_data()
     # print(outcome)
-    response = query_from_disk("How is AI affecting cybersecurity?")
+    response = query_from_disk("Which empirical approaches adopt multiobjecting optimization based methods?")
     print(response)

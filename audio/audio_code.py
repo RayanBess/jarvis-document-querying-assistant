@@ -12,12 +12,19 @@ import pyaudio
 from os import PathLike
 from deepgram import Deepgram
 import asyncio
+import whisper
+import os
+import re
+from transformers import pipeline
+from transformers import AutoProcessor, AutoModel
+
 
 pa = pyaudio.PyAudio()
 
 class Audio():
     def __init__(self, model: str = "facebook/wav2vec2-base-960h", deepgram_key: str = None) -> None:
-        self.deepgram = Deepgram(deepgram_key)
+        # self.deepgram = Deepgram(deepgram_key)
+        pass
 
     def buffer_to_wav(self, buffer: bytes) -> bytes:
         """Wraps a buffer of raw audio data in a WAV"""
@@ -34,22 +41,12 @@ class Audio():
                 wav_file.writeframesraw(buffer)
 
             return wav_buffer.getvalue()
-    
-    async def transcribe(self, file_name: Union[Union[str, bytes, PathLike[str], PathLike[bytes]], int]):
-        """
-        Transcribe audio using Deepgram API.
-
-        Args:
-            - file_name: The name of the file to transcribe.
-
-        Returns:
-            The response from the API.
-        """
-        with open(file_name, "rb") as audio:
-            source = {"buffer": audio, "mimetype": "audio/wav"}
-            response = await self.deepgram.transcription.prerecorded(source)
-            return response["results"]["channels"][0]["alternatives"][0]["words"]
-
+        
+    def transcribe(self, file_name):
+        model = whisper.load_model("base")
+        result = model.transcribe(file_name)
+        
+        return re.sub(r'[^\w\s]', "", result["text"])
 
     def speech_to_text(self, max_seconds = None, recording_path = None) -> None:
         """
@@ -115,34 +112,30 @@ class Audio():
             except Exception:
                 pass
 
-            current_time = time.time()
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            words = loop.run_until_complete(self.transcribe(recording_path))
-            string_words = " ".join(
-                word_dict.get("word") for word_dict in words if "word" in word_dict
-        )
+            string_words = self.transcribe(recording_path)
+            
         return string_words
 
         
-    def text_to_speech(sentence):
-        processor = AutoProcessor.from_pretrained("suno/bark")
-        model = BarkModel.from_pretrained("suno/bark")
+    def text_to_speech(self, sentence):
+                
+        processor = AutoProcessor.from_pretrained("suno/bark-small")
+        model = AutoModel.from_pretrained("suno/bark-small")
 
-        voice_preset = "v2/en_speaker_6"
+        inputs = processor(
+            text=["Hello"],
+            return_tensors="pt",
+        )
 
-        inputs = processor(sentence, voice_preset=voice_preset)
+        speech_values = model.generate(**inputs, do_sample=True)
 
-        audio_array = model.generate(**inputs)
-        audio_array = audio_array.cpu().numpy().squeeze()
+        sampling_rate = model.config.sample_rate
+        scipy.io.wavfile.write("bark_out.wav", rate=sampling_rate, data=speech_values.cpu().numpy().squeeze())
 
-        print("audio array generated")
-        sample_rate = model.generation_config.sample_rate
-        scipy.io.wavfile.write("bark_responcse.wav", rate=sample_rate, data=audio_array)
-        print('file saved')
-    
+
 
 
 if __name__ == "__main__":
     audio = Audio()
-    audio.speech_to_text()
+    # audio.speech_to_text()
+    audio.text_to_speech("hello world")
