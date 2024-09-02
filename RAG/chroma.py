@@ -11,9 +11,9 @@ from llama_index.core import VectorStoreIndex, get_response_synthesizer
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.postprocessor import SimilarityPostprocessor
+import python-dotenv
 
-os.environ["OPENAI_API_KEY"] = "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"
-HF_TOKEN = "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"
+HF_TOKEN = os.environ.get("HF_TOKEN")
 # global default
 Settings.embed_model = HuggingFaceEmbedding(
     model_name="BAAI/bge-small-en-v1.5"
